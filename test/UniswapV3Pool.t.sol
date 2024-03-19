@@ -59,6 +59,7 @@ contract UniswapV3PoolTest is Test, TestUtils {
             token0.approve(address(this), params.wethBalance);
             token1.approve(address(this), params.usdcBalance);
 
+            // this is a defined struct callback for minting
             UniswapV3Pool.CallbackData memory extra =
                 UniswapV3Pool.CallbackData({token0: address(token0), token1: address(token1), payer: address(this)});
 
@@ -119,6 +120,59 @@ contract UniswapV3PoolTest is Test, TestUtils {
 
             IERC20(extra.token0).transferFrom(extra.payer, msg.sender, amount0);
             IERC20(extra.token1).transferFrom(extra.payer, msg.sender, amount1);
+        }
+    }
+
+    function testSwapBuyEth() public {
+        TestCaseParams memory params = TestCaseParams({
+            wethBalance: 1 ether,
+            usdcBalance: 5000 ether,
+            currentTick: 85176,
+            lowerTick: 84222,
+            upperTick: 86129,
+            liquidity: 1517882343751509868544,
+            currentSqrtP: 5602277097478614198912276234240,
+            transferInMintCallback: true,
+            transferInSwapCallback: true,
+            mintLiqudity: true
+        });
+
+        (uint256 poolBalance0, uint256 poolBalance1) = setupTestCase(params);
+        uint256 swapAmount = 42 ether;
+        token1.mint(address(this), swapAmount);
+        token1.approve(address(this), swapAmount);
+
+        UniswapV3Pool.CallbackData memory extra =
+            UniswapV3Pool.CallbackData({token0: address(token0), token1: address(token1), payer: address(this)});
+
+        uint256 userBalance0Before = token0.balanceOf(address(this));
+        (int256 amount0Delta, int256 amount1Delta) = pool.swap(address(this), abi.encode(extra));
+
+        int256 expectedAmount0 = -0.008396714242162444 ether;
+        assertEq(amount0Delta, expectedAmount0, "invalid ETH out");
+        assertEq(amount1Delta, 42 ether, "invalid USDC in");
+
+        assertEq(
+            token0.balanceOf(address(this)),
+            uint256(int256(userBalance0Before) - amount0Delta),
+            "invalid user ETH balance"
+        );
+
+        // token0 is USDC, token1 is ETH
+        assertEq(token1.balanceOf(address(this)), 0, "invalid user USDC balance");
+    }
+
+    function uniswapV3SwapCallback(int256 amount0, int256 amount1, bytes calldata data) public {
+        if (transferInSwapCallback) {
+            UniswapV3Pool.CallbackData memory extra = abi.decode(data, (UniswapV3Pool.CallbackData));
+
+            if (amount0 > 0) {
+                IERC20(extra.token0).transferFrom(extra.payer, msg.sender, uint256(amount0));
+            }
+
+            if (amount1 > 0) {
+                IERC20(extra.token1).transferFrom(extra.payer, msg.sender, uint256(amount1));
+            }
         }
     }
 }
