@@ -9,3 +9,4 @@ fmt:
 
 node:
 	anvil --code-size-limit 50000
+
